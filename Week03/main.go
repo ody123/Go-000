@@ -8,27 +8,22 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 )
 
 func main() {
-	ctx1, cancel := context.WithCancel(context.Background())
-	g, ctx2 := errgroup.WithContext(ctx1)
+	g, ctx := errgroup.WithContext(context.Background())
+	wg := sync.WaitGroup{}
 	g.Go(func() error {
+		wg.Add(1)
+		defer wg.Done()
 		server := http.Server{
 			Addr:    ":8080",
 			Handler: nil,
 		}
-		http.HandleFunc("/stop", func(writer http.ResponseWriter, request *http.Request) {
-			defer cancel()
-			fmt.Println("stop server 8080")
-			err := server.Shutdown(context.Background())
-			if err != nil {
-				fmt.Println("stop err:", err)
-			}
-		})
 		go func() {
-			<-ctx2.Done()
+			<-ctx.Done()
 			err := server.Shutdown(context.Background())
 			if err != nil {
 				fmt.Println("shutdown err:", err)
@@ -38,6 +33,25 @@ func main() {
 		return server.ListenAndServe()
 	})
 	g.Go(func() error {
+		wg.Add(1)
+		defer wg.Done()
+		server := http.Server{
+			Addr:    ":8081",
+			Handler: nil,
+		}
+		go func() {
+			<-ctx.Done()
+			err := server.Shutdown(context.Background())
+			if err != nil {
+				fmt.Println("shutdown err:", err)
+			}
+			fmt.Println("shutdown server 8081")
+		}()
+		return server.ListenAndServe()
+	})
+	g.Go(func() error {
+		wg.Add(1)
+		defer wg.Done()
 		signals := make(chan os.Signal, 1)
 		signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 		// 接收到终止信号 返回错误终止运行
@@ -45,9 +59,9 @@ func main() {
 		case <-signals:
 			fmt.Println("receive quit signal")
 			return errors.New("receive quit signal")
-		case <-ctx2.Done():
+		case <-ctx.Done():
 			fmt.Println("signal ctx done")
-			return ctx2.Err()
+			return ctx.Err()
 		}
 	})
 
@@ -56,5 +70,7 @@ func main() {
 	if err := g.Wait(); err != nil {
 		fmt.Println("err group wait err:", err.Error())
 	}
+
+	wg.Wait()
 	fmt.Println("all stopped!")
 }
