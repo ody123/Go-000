@@ -8,16 +8,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 )
 
 func main() {
 	g, ctx := errgroup.WithContext(context.Background())
-	wg := sync.WaitGroup{}
 	g.Go(func() error {
-		wg.Add(1)
-		defer wg.Done()
 		server := http.Server{
 			Addr:    ":8080",
 			Handler: nil,
@@ -33,8 +29,6 @@ func main() {
 		return server.ListenAndServe()
 	})
 	g.Go(func() error {
-		wg.Add(1)
-		defer wg.Done()
 		server := http.Server{
 			Addr:    ":8081",
 			Handler: nil,
@@ -50,8 +44,6 @@ func main() {
 		return server.ListenAndServe()
 	})
 	g.Go(func() error {
-		wg.Add(1)
-		defer wg.Done()
 		signals := make(chan os.Signal, 1)
 		signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 		// 接收到终止信号 返回错误终止运行
@@ -71,6 +63,5 @@ func main() {
 		fmt.Println("err group wait err:", err.Error())
 	}
 
-	wg.Wait()
 	fmt.Println("all stopped!")
 }
